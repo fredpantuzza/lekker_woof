@@ -1,0 +1,17 @@
+
+.cell-table tr:nth-child(even) > td.dash-cell {
+    background-color: var(--bs-light);
+}
+
+.cell-table tr:nth-child(odd) > td.dash-cell {
+    background-color: var(--bs-dar);
+}
+
+.nav-tabs,
+.nav-link {
+    border-color: var(--bs-secondary) !important;
+}
+
+.nav-link {
+    border-bottom-style: none !important;
+}

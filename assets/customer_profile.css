@@ -1,0 +1,83 @@
+.nav-item.add-dog-tab > a {
+    background-color: var(--bs-success);
+    color: var(--bs-white);
+    transition: all 500ms;
+}
+
+.nav-item.add-dog-tab > a:hover {
+    filter: brightness(90%);
+}
+
+.dict-form-field.dog_id {
+    width: 20%;
+    min-width: 60px;
+    max-width: 100px;
+}
+
+.dict-form-field.dog_name {
+    flex-grow: 1;
+    min-width: 60%;
+}
+
+.dict-form-field.birth_date {
+    width: 20%;
+}
+
+.dict-form-field.breed {
+    flex-grow: 1;
+    min-width: 50%;
+}
+
+.dict-form-field.dog_created_timestamp {
+    width: 25%;
+    min-width: 180px;
+    max-width: 200px;
+}
+
+.dict-form-field.dog_notes {
+    width: 100%;
+    flex-grow: 1;
+}
+
+.dict-form-field.dog_notes textarea {
+    height: 150px;
+}
+
+.dict-form-field.address {
+    flex-grow: 1;
+    min-width: 70%;
+}
+
+.dict-form-field.balance_in_eur {
+    width: 30%;
+    min-width: 150px;
+    max-width: 250px;
+}
+
+.dict-form-field.customer_notes {
+    width: 100%;
+    flex-grow: 1;
+}
+
+.dict-form-field.customer_notes textarea {
+    height: 100px;
+}
+
+.dict-form-field.person_name {
+    width: 50%;
+    min-width: 300px;
+    flex-grow: 1;
+}
+
+.dict-form-field.phone1,
+.dict-form-field.phone2 {
+    width: 20%;
+    min-width: 180px;
+    max-width: 200px;
+}
+
+.dict-form-field.email_address {
+    width: 50%;
+    min-width: 300px;
+    flex-grow: 1;
+}
