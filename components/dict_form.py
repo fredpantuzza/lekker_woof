@@ -1,13 +1,12 @@
 import json
+import uuid
 from enum import Enum, IntEnum
 from typing import Any, Optional
-import uuid
 
 import dash_bootstrap_components as bootstrap
 from bidict import bidict
 from dash import ctx, dcc, callback, Input, State, Output, MATCH, ALL, html
 from dash.development.base_component import Component
-from dash.exceptions import PreventUpdate
 
 from controls.utils import flatten, BidictEncoder, BidictDecoder
 
@@ -212,7 +211,8 @@ class DictFormAIO(html.Div):
         if field_type == FieldType.STORE:
             return dcc.Store(id=field_id, data=display_value)
         elif field_type == FieldType.DATE:
-            return dcc.DatePickerSingle(id=field_id, date=display_value, disabled=is_readonly, placeholder=placeholder)
+            return dcc.DatePickerSingle(id=field_id, date=display_value, disabled=is_readonly, placeholder=placeholder,
+                                        className='form-date-picker')
         elif field_type == FieldType.TEXTAREA:
             return bootstrap.Textarea(id=field_id, value=DictFormAIO.__value_as_str(display_value),
                                       readonly=is_readonly, debounce=True, placeholder=placeholder)

@@ -1,0 +1,32 @@
+@import "../node_modules/bootstrap/flatly/_variables";
+@import "../node_modules/bootstrap/scss/bootstrap";
+@import "../node_modules/bootstrap/flatly/_bootswatch";
+
+* {
+    font-family: var(--bs-font-sans-serif) !important;
+}
+
+.cell-table tr:nth-child(even) > td.dash-cell {
+    background-color: $light;
+}
+
+.cell-table tr:nth-child(odd) > td.dash-cell {
+    background-color: $dark;
+}
+
+.nav-tabs,
+.nav-link {
+    border-color: $secondary !important;
+}
+
+.nav-link {
+    border-bottom-style: none !important;
+}
+
+.form-date-picker input {
+    @extend .form-control
+}
+
+div.SingleDatePickerInput {
+    border: none !important;
+}

@@ -8,7 +8,8 @@ import pages.customer_profile
 import pages.customers_list
 from components.dict_form import FormState
 
-app = Dash(__name__, external_stylesheets=[bootstrap.themes.FLATLY])
+# app = Dash(__name__, external_stylesheets=[bootstrap.themes.FLATLY])
+app = Dash(__name__)
 app.config.suppress_callback_exceptions = True
 
 
