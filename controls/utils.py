@@ -1,10 +1,12 @@
 import json
-from typing import Any, Callable
+from typing import Any, TypeVar
 
 from bidict import bidict
 
+_T = TypeVar('_T')
 
-def flatten(ls: list[list]) -> list:
+
+def flatten(ls: list[list[_T]]) -> list[_T]:
     return [item for sublist in ls for item in sublist]
 
 

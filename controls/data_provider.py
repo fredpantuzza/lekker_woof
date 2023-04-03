@@ -102,6 +102,9 @@ class DataProvider:
     def commit(self) -> None:
         self.__connection.commit()
 
+    def rollback(self) -> None:
+        self.__connection.rollback()
+
     def get_all_customers(self) -> pandas.DataFrame:
         return pandas.read_sql(DataProvider.__sql_get_all_customers, self.__connection)
 
