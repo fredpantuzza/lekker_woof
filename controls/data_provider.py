@@ -1,8 +1,12 @@
+import logging
 import sqlite3
 
 import pandas
 
 from controls.types import Customer
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class DataProvider:
@@ -65,8 +69,7 @@ class DataProvider:
     '''
 
     __sql_insert_dog = '''
-    INSERT INTO dog
-    (customer_id, name, birth_date, breed, is_male, notes)
+    INSERT INTO dog(customer_id, name, birth_date, breed, is_male, notes)
     VALUES(:customer_id, :dog_name, :birth_date, :breed, :is_male, :dog_notes)
     '''
 
@@ -81,8 +84,7 @@ class DataProvider:
     '''
 
     __sql_insert_person = '''
-    INSERT INTO person
-    (customer_id, name, phone1, phone2, email_address)
+    INSERT INTO person(customer_id, name, phone1, phone2, email_address)
     VALUES(:customer_id, :person_name, :phone1, :phone2, :email_address)
     '''
 
@@ -96,19 +98,27 @@ class DataProvider:
     '''
 
     def __init__(self):
+        logger.info('Connecting to database...')
         # TODO configurable file location
         self.__connection = sqlite3.connect('sql/lekker_woof.db')
+        logger.info('Connected')
 
     def commit(self) -> None:
+        logger.info('Committing...')
         self.__connection.commit()
+        logger.info('Committed')
 
     def rollback(self) -> None:
+        logger.info('Rolling back...')
         self.__connection.rollback()
+        logger.info('Rolled back')
 
     def get_all_customers(self) -> pandas.DataFrame:
+        logger.debug('get_all_customers')
         return pandas.read_sql(DataProvider.__sql_get_all_customers, self.__connection)
 
     def get_customer_by_dog_id(self, dog_id: int) -> Customer:
+        logger.debug('get_customer_by_dog_id')
         customer_df = pandas.read_sql(DataProvider.__sql_customer_by_dog_id, self.__connection,
                                       params={'dog_id': dog_id})
 
@@ -134,24 +144,41 @@ class DataProvider:
         return Customer(customer_data, dogs, persons)
 
     def insert_customer(self, customer_data: dict) -> int:
+        logger.info(f'Inserting customer: ${customer_data}')
         cur = self.__connection.execute(self.__sql_insert_customer, customer_data)
-        return cur.lastrowid
+        customer_id = cur.lastrowid
+        logger.info(f'Customer inserted with id ${customer_id}')
+        return customer_id
 
-    def update_customer(self, customer_data: dict):
+    def update_customer(self, customer_data: dict) -> None:
+        logger.info(f'Updating customer: ${customer_data}')
         self.__connection.execute(self.__sql_update_customer, customer_data)
+        logger.info(f'Customer updated')
 
-    def insert_dog(self, dog: dict, customer_id: int):
+    def insert_dog(self, dog: dict, customer_id: int) -> int:
+        logger.info(f'Inserting dog of customer {customer_id}: ${dog}')
         params = dog.copy()
         params['customer_id'] = customer_id
-        self.__connection.execute(self.__sql_insert_dog, params)
+        cur = self.__connection.execute(self.__sql_insert_dog, params)
+        dog_id = cur.lastrowid
+        logger.info(f'Dog inserted with id ${dog_id}')
+        return dog_id
 
-    def update_dog(self, dog: dict):
+    def update_dog(self, dog: dict) -> None:
+        logger.info(f'Updating dog: ${dog}')
         self.__connection.execute(self.__sql_update_dog, dog)
+        logger.info(f'Dog updated')
 
-    def insert_person(self, person: dict, customer_id: int):
+    def insert_person(self, person: dict, customer_id: int) -> int:
+        logger.info(f'Inserting person of customer {customer_id}: ${person}')
         params = person.copy()
         params['customer_id'] = customer_id
-        self.__connection.execute(self.__sql_insert_person, params)
+        cur = self.__connection.execute(self.__sql_insert_person, params)
+        person_id = cur.lastrowid
+        logger.info(f'Person inserted with id ${person_id}')
+        return person_id
 
-    def update_person(self, person: dict):
+    def update_person(self, person: dict) -> None:
+        logger.info(f'Updating person: ${person}')
         self.__connection.execute(self.__sql_update_person, person)
+        logger.info(f'Person updated')

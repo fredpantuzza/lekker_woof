@@ -1,9 +1,13 @@
-@import "../node_modules/bootstrap/flatly/_variables";
+@import "../node_modules/bootstrap/flatly/variables";
 @import "../node_modules/bootstrap/scss/bootstrap";
-@import "../node_modules/bootstrap/flatly/_bootswatch";
+@import "../node_modules/bootstrap/flatly/bootswatch";
 
 * {
     font-family: var(--bs-font-sans-serif) !important;
+}
+
+.zx-toast {
+    z-index: 9999;
 }
 
 .cell-table tr:nth-child(even) > td.dash-cell {

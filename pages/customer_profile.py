@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from typing import Any, Optional
 
@@ -8,7 +9,10 @@ from dash.exceptions import PreventUpdate
 
 from components.dict_form import DictFormAIO, DataStore as FormData, FieldType, Ids as FormIds
 from controls.data_provider import DataProvider
-from controls.types import Customer
+from controls.types import Customer, UserMessage
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class Sex(str, Enum):
@@ -136,6 +140,50 @@ class Controller:
             raise PreventUpdate
 
     @staticmethod
+    def save_customer(customer_data_json: str, dogs_json: str, persons_json: str) -> dict:
+        logger.info('Saving customer...')
+        logger.debug(f'customer_data={customer_data_json} dogs={dogs_json} persons={persons_json}')
+
+        data_provider = DataProvider()
+        try:
+            customer_data = FormData.from_json(customer_data_json)
+            logger.info(f'Validating customer data: {customer_data.data}')
+            customer_data.validate()
+            if customer_data.is_insertion:
+                customer_id = data_provider.insert_customer(customer_data.data)
+            else:
+                customer_id = customer_data.data['customer_id']
+                data_provider.update_customer(customer_data.data)
+
+            for dog_json in dogs_json:
+                dog = FormData.from_json(dog_json)
+                logger.info(f'Validating dog: {dog.data}')
+                dog.validate()
+                # TODO ideally return previously selected dog_id
+                if dog.is_insertion:
+                    dog_id = data_provider.insert_dog(dog.data, customer_id=customer_id)
+                else:
+                    dog_id = dog.data['dog_id']
+                    data_provider.update_dog(dog.data)
+
+            for person_json in persons_json:
+                person = FormData.from_json(person_json)
+                logger.info(f'Validating person: {person.data}')
+                person.validate()
+                if person.is_insertion:
+                    data_provider.insert_person(person.data, customer_id=customer_id)
+                else:
+                    data_provider.update_person(person.data)
+
+            data_provider.commit()
+            return dict(
+                user_message=UserMessage(message='Customer saved successfully', header='Success', type='success'),
+                dog_id=dog_id)
+        except RuntimeError as e:
+            data_provider.rollback()
+            return dict(user_message=UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger'))
+
+    @staticmethod
     def __add_new_dog_tab(dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
         new_dog_tab = Controller.make_dog_tab(dog=None, is_insertion=True)
         dogs_tabs.insert(len(dogs_tabs) - 1, new_dog_tab)
@@ -227,7 +275,7 @@ def layout(dog_id=None) -> html.Div:
         else (Controller.get_customer_by_dog_id(dog_id=dog_id), False)
 
     data_storage = [
-        dcc.Store(False, id=Controller.id_store_is_modified)
+        dcc.Store(data=False, id=Controller.id_store_is_modified)
     ]
 
     add_dog_tab = bootstrap.Tab(

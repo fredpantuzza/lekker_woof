@@ -79,7 +79,7 @@ class DataStore:
     def validate(self) -> None:
         for field_name in self.fields_config.keys():
             if not self.is_field_valid(field_name):
-                raise RuntimeError(f'Some fields contain errors')
+                raise RuntimeError(f'Error on field {field_name}')
 
     def get_field_value(self, field_name: str) -> Any:
         return self.data[field_name] if field_name in self.data else None
@@ -90,7 +90,7 @@ class DataStore:
             return False
         is_required = self.get_field_config(field_name, 'required', default_value=False)
         field_value = self.get_field_value(field_name)
-        if is_required and not field_value:
+        if is_required and field_value is None:
             return False
         return True
 
@@ -280,35 +280,39 @@ class DictFormAIO(html.Div):
         field_type = self.__data_store.get_field_type(field_name)
         field_id = Ids.field_element(field_type, field_name, self.form_id, self.form_index)
         is_readonly = self.__data_store.is_field_readonly(field_name)
-        field_value_options = self.__data_store.get_field_options(field_name, default=[field_value])
         display_value_converter_bidict = self.__data_store.get_field_display_value_converter(field_name)
         display_value = display_value_converter_bidict[field_value] \
             if display_value_converter_bidict is not None and field_value is not None \
             else field_value
+        field_value_options = self.__data_store.get_field_options(field_name, default=[display_value])
         field_label = self.__data_store.get_field_label(field_name)
         placeholder = f'Enter {field_label.lower()} here...' if not is_readonly else '<NULL>'
+        if is_readonly:
+            return bootstrap.Input(
+                id=field_id, type='text', value=DictFormAIO.__value_as_str(display_value), readonly=True,
+                className='form-control-plaintext', placeholder='-')
         if field_type == FieldType.STORE:
             return dcc.Store(
                 id=field_id, data=display_value)
-        elif field_type == FieldType.DATE:
+        if field_type == FieldType.DATE:
             return dcc.DatePickerSingle(
                 id=field_id, date=display_value, disabled=is_readonly, placeholder=placeholder,
                 className='form-date-picker')
-        elif field_type == FieldType.TEXTAREA:
+        if field_type == FieldType.TEXTAREA:
             return bootstrap.Textarea(
                 id=field_id, value=DictFormAIO.__value_as_str(display_value), readonly=is_readonly, debounce=True,
                 placeholder=placeholder)
-        elif field_type == FieldType.RADIO:
+        if field_type == FieldType.RADIO:
             return bootstrap.RadioItems(
                 id=field_id, value=display_value, options=field_value_options, inline=True)
-        elif field_type == FieldType.TEXT:
+        if field_type == FieldType.TEXT:
             return bootstrap.Input(
                 id=field_id, type='text', value=DictFormAIO.__value_as_str(display_value), readonly=is_readonly,
                 debounce=True, placeholder=placeholder)
-        elif field_type == FieldType.NUMBER:
+        if field_type == FieldType.NUMBER:
             return bootstrap.Input(
                 id=field_id, type='number', value=display_value, readonly=is_readonly, placeholder=placeholder)
-        elif field_type == FieldType.EMAIL:
+        if field_type == FieldType.EMAIL:
             return bootstrap.Input(
                 id=field_id, type='email', value=DictFormAIO.__value_as_str(display_value), readonly=is_readonly,
                 debounce=True, placeholder=placeholder)
