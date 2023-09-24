@@ -133,3 +133,10 @@ dmypy.json
 
 # MacOS
 .DS_Store
+
+# SCSS
+assets/*.css
+assets/*.css.map
+
+# Database file
+*.db

@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, TypedDict
 
 
 class Customer:
@@ -14,18 +14,19 @@ class Customer:
         return cls(**customer_dict)
 
 
-class UserMessage:
-    def __init__(self, message: str, header: str, type: str):
-        self.message = message
-        self.header = header
-        self.icon = 'success' if type == 'success' else 'danger'
-        self.color = 'success' if type == 'success' else 'danger'
+class UserMessage(TypedDict):
+    message: str
+    header: str
+    type: str
 
-    def to_callback_output(self) -> dict:
-        return dict(
-            user_message=self.message,
-            user_message_header=self.header,
-            user_message_icon=self.icon,
-            user_message_color=self.color,
-            user_message_open=True,
-        )
+
+def user_message_to_callback_output(user_message: UserMessage) -> dict:
+    icon = 'success' if user_message['type'] == 'success' else 'danger'
+    color = 'success' if user_message['type'] == 'success' else 'danger'
+    return dict(
+        user_message=user_message['message'],
+        user_message_header=user_message['header'],
+        user_message_icon=icon,
+        user_message_color=color,
+        user_message_open=True,
+    )

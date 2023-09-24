@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 import dash_bootstrap_components as bootstrap
 from bidict import bidict
@@ -26,23 +26,39 @@ class FieldType(str, Enum):
     RADIO = 'RADIO'
 
 
+class FieldConfig(TypedDict, total=False):  # total=False means all keys are optional
+    readonly: bool
+    type: FieldType
+    label: str
+    display_value_converter_bidict: bidict
+    options: dict[str, Any]
+
+
+class FieldElementId(TypedDict):
+    component: Optional[str]
+    field_type: Optional[FieldType]
+    field_name: Optional[str]
+    form_id: Optional[str]
+    form_index: Optional[str]
+
+
 class Ids:
     @staticmethod
-    def form_data_store(form_id: Any, form_index: Any = '') -> dict:
+    def form_data_store(form_id: Any, form_index: Any = '') -> FieldElementId:
         return Ids.field_element(
             field_type=FieldType.STORE,
             field_name='form_data',
             form_id=form_id, form_index=form_index)
 
     @staticmethod
-    def field_feedback(field_name: Any, form_id: Any, form_index: Any = '') -> dict:
+    def field_feedback(field_name: Any, form_id: Any, form_index: Any = '') -> FieldElementId:
         return Ids.field_element(
             field_type='field_feedback',
             field_name=field_name,
             form_id=form_id, form_index=form_index)
 
     @staticmethod
-    def field_element(field_type: Any, field_name: Any, form_id: Any, form_index: Any = '') -> dict:
+    def field_element(field_type: Any, field_name: Any, form_id: Any, form_index: Any = '') -> FieldElementId:
         """
         :param field_type: param of type @FieldType or str
         :param field_name: name of the field
@@ -50,7 +66,7 @@ class Ids:
         :param form_index: additional index to the form_id, if needed.
         :return: dict id
         """
-        return dict(
+        return FieldElementId(
             component='DictFormAIO',
             field_type=field_type,
             field_name=field_name,
@@ -60,7 +76,7 @@ class Ids:
 
 
 class DataStore:
-    def __init__(self, data: dict, fields_config: dict[str, dict[str, Any]], is_insertion: bool,
+    def __init__(self, data: dict, fields_config: dict[str, FieldConfig], is_insertion: bool,
                  is_modified: bool = False, validation_state_by_field: dict[str, bool] = {}) -> None:
         self.data = data
         self.fields_config = fields_config
@@ -151,10 +167,12 @@ class DictFormAIO(html.Div):
         for field_type, storage in __storage_by_field_type.items()
         if field_type not in [FieldType.STORE, FieldType.DATE, FieldType.RADIO])
 
-    def __init__(self, data: dict, fields_config: dict[str, dict[str, Any]] = {},
+    def __init__(self, data: dict, fields_config: dict[str, FieldConfig] = {},
                  is_insertion: bool = False, form_id: Optional[str] = None, form_index: Optional[Any] = '',
                  *args, **kwargs):
         """
+        After the initialization of the component, the property `field_elements_ids` will be available with the ids of
+        all elements created. Useful if you want to add extra functionality to specific or all fields.
         :param data: Dict with each key being a field_name in the form.
         :param fields_config: Dict where key is field_name name, and inner dict accepts following values:
           * readonly: behaves as expected. Default=false
@@ -170,10 +188,15 @@ class DictFormAIO(html.Div):
         """
         self.form_id = form_id if form_id is not None else str(uuid.uuid4())
         self.form_index = form_index
+        self.field_elements_ids: list[FieldElementId] = []
         self.__data_store = DataStore(data=data, fields_config=fields_config, is_insertion=is_insertion)
         self.__initialize_data_from_fields_config()
 
-        super().__init__(*args, **kwargs, className='dict-form', children=self.__make_form())
+        logger.info(f'Initializing new DictForm with form_id={self.form_id} form_index={self.form_index} '
+                    f'data_store={self.__data_store.to_json()}')
+        form = self.__make_form()
+
+        super().__init__(*args, **kwargs, className='dict-form', children=form)
 
     def __initialize_data_from_fields_config(self) -> None:
         """
@@ -184,6 +207,7 @@ class DictFormAIO(html.Div):
                 continue
             self.__data_store.data[field_name] = None
 
+    # inject inputs and states
     @staticmethod
     @callback(Output(Ids.form_data_store(form_id=MATCH, form_index=MATCH), 'data'),
               inputs=dict(
@@ -238,11 +262,15 @@ class DictFormAIO(html.Div):
         return [input_field for input_field in ctx_input_fields if input_field['triggered']]
 
     def __make_form(self) -> bootstrap.Form:
+        logger.info('Constructing form fields...')
         form_fields = []
         for field_name, _ in self.__data_store.fields_config.items():
+            logger.info(f'Constructing field {field_name}')
             field_value = self.__data_store.data[field_name] if field_name in self.__data_store.data else None
+            logger.debug(f'value= {field_value}')
             field_components = self.__make_field_components(field_name=field_name, field_value=field_value)
             form_fields.append(field_components)
+        logger.info('All fields constructed')
         return bootstrap.Form([
             dcc.Store(id=Ids.form_data_store(self.form_id, self.form_index), data=self.__data_store.to_json()),
             html.Div(
@@ -284,9 +312,12 @@ class DictFormAIO(html.Div):
         display_value = display_value_converter_bidict[field_value] \
             if display_value_converter_bidict is not None and field_value is not None \
             else field_value
+        logger.debug(f'display_value={display_value}')
         field_value_options = self.__data_store.get_field_options(field_name, default=[display_value])
         field_label = self.__data_store.get_field_label(field_name)
         placeholder = f'Enter {field_label.lower()} here...' if not is_readonly else '<NULL>'
+
+        self.field_elements_ids.append(field_id)
         if is_readonly:
             return bootstrap.Input(
                 id=field_id, type='text', value=DictFormAIO.__value_as_str(display_value), readonly=True,

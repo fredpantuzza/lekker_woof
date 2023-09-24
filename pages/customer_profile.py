@@ -4,10 +4,11 @@ from typing import Any, Optional
 
 import dash_bootstrap_components as bootstrap
 from bidict import bidict
-from dash import callback, Input, Output, html, dcc, MATCH, ALL
+from dash import callback, Input, Output, html, MATCH, State, ALL
 from dash.exceptions import PreventUpdate
 
 from components.dict_form import DictFormAIO, DataStore as FormData, FieldType, Ids as FormIds
+from components.page_callback import page_callback, Action, CallbackData
 from controls.data_provider import DataProvider
 from controls.types import Customer, UserMessage
 
@@ -28,10 +29,6 @@ class Ids:
             'component': component_type,
             'index': index
         }
-
-    @classmethod
-    def store_is_modified(cls, customer_id: Any) -> dict:
-        return cls.element(Controller.id_store_is_modified, index=customer_id)
 
 
 class Controller:
@@ -65,13 +62,14 @@ class Controller:
         'person_created_timestamp': {'label': 'Registration date', 'type': FieldType.STORE}
     }
 
-    id_store_is_modified = 'CustomerIsModified'
+    id_main_container = 'CustomerProfileContainer'
     id_customer_data_form = 'CustomerDataForm'
     id_dog_form = 'DogForm'
     id_dogs_tabs = Ids.element('Tabs', 'dogs')
     id_add_dog_tab = 'add-dog-tab'
     id_person_form = 'PersonForm'
     id_persons_tabs = Ids.element('Tabs', 'persons')
+    id_reset_button = Ids.element('Button', 'reset-customer')
     id_save_button = Ids.element('Button', 'save-customer')
 
     # Dog validation components
@@ -106,26 +104,15 @@ class Controller:
         return data_provider.get_customer_by_dog_id(dog_id=dog_id)
 
     @staticmethod
-    @callback(Output(id_store_is_modified, 'data'),
-              inputs=dict(
-                  customer_data_form_data_json=Input(FormIds.form_data_store(form_id=id_customer_data_form), 'data'),
-                  dogs_form_data_json=Input(FormIds.form_data_store(form_id=id_dog_form, form_index=ALL), 'data'),
-                  persons_form_data_json=Input(FormIds.form_data_store(form_id=id_person_form, form_index=ALL), 'data')
-              ))
-    def on_inner_form_modified(customer_data_form_data_json: str, dogs_form_data_json: list[str],
-                               persons_form_data_json: list[str]) -> bool:
-        customer_data_form_data = FormData.from_json(customer_data_form_data_json)
-        dogs_form_data = [FormData.from_json(data_json) for data_json in dogs_form_data_json]
-        persons_form_data = [FormData.from_json(data_json) for data_json in persons_form_data_json]
-        all_forms = [customer_data_form_data] + dogs_form_data + persons_form_data
-        return any(form_data.is_modified for form_data in all_forms)
-
-    @staticmethod
-    @callback(Output(id_dogs_tabs, 'children'),
-              Output(id_dogs_tabs, 'active_tab'),
-              inputs=dict(
-                  active_tab=Input(id_dogs_tabs, 'active_tab'),
-                  dogs_tabs=Input(id_dogs_tabs, 'children')))
+    @callback(
+        Output(id_dogs_tabs, 'children'),
+        Output(id_dogs_tabs, 'active_tab'),
+        inputs=dict(
+            active_tab=Input(id_dogs_tabs, 'active_tab'),
+            dogs_tabs=Input(id_dogs_tabs, 'children'),
+        ),
+        prevent_initial_call=True
+    )
     def on_active_tab_changed(active_tab: str, dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
         if not dogs_tabs:
             raise PreventUpdate
@@ -140,7 +127,42 @@ class Controller:
             raise PreventUpdate
 
     @staticmethod
-    def save_customer(customer_data_json: str, dogs_json: str, persons_json: str) -> dict:
+    @callback(
+        Output(id_main_container, 'children'),
+        inputs=dict(
+            reset_button_clicks=Input(id_reset_button, 'n_clicks'),
+            active_tab=Input(id_dogs_tabs, 'active_tab'),
+            dogs_tabs=Input(id_dogs_tabs, 'children'),
+        ),
+        prevent_initial_call=True
+    )
+    def reset_data(reset_button_clicks: int, active_tab: str, dogs_tabs: list[bootstrap.Tab]):
+        if not reset_button_clicks:
+            raise PreventUpdate
+        if active_tab == 'None':
+            # make sure there's always a dog selected
+            assert len(dogs_tabs) > 0
+            dog_id = Controller.__get_tab_id(dogs_tabs[0])
+        else:
+            dog_id = active_tab
+        assert dog_id is not None
+        return make_layout(dog_id)
+
+    @staticmethod
+    @page_callback(
+        action=Action.SHOW_USER_MESSAGE,
+        inputs=dict(
+            save_button_clicks=Input(id_save_button, 'n_clicks'),
+            customer_data_json=State(FormIds.form_data_store(id_customer_data_form), 'data'),
+            dogs_json=State(FormIds.form_data_store(id_dog_form, ALL), 'data'),
+            persons_json=State(FormIds.form_data_store(id_person_form, ALL), 'data'),
+        )
+    )
+    def save_customer(save_button_clicks: int, customer_data_json: str, dogs_json: str,
+                      persons_json: str) -> CallbackData:
+        if not save_button_clicks:
+            raise PreventUpdate
+
         logger.info('Saving customer...')
         logger.debug(f'customer_data={customer_data_json} dogs={dogs_json} persons={persons_json}')
 
@@ -154,40 +176,44 @@ class Controller:
             else:
                 customer_id = customer_data.data['customer_id']
                 data_provider.update_customer(customer_data.data)
+            logger.info(f'Saved customer {customer_id}')
 
             for dog_json in dogs_json:
                 dog = FormData.from_json(dog_json)
                 logger.info(f'Validating dog: {dog.data}')
                 dog.validate()
-                # TODO ideally return previously selected dog_id
                 if dog.is_insertion:
                     dog_id = data_provider.insert_dog(dog.data, customer_id=customer_id)
                 else:
                     dog_id = dog.data['dog_id']
                     data_provider.update_dog(dog.data)
+                logger.info(f'Saved dog {dog_id} from customer {customer_id}')
 
             for person_json in persons_json:
                 person = FormData.from_json(person_json)
                 logger.info(f'Validating person: {person.data}')
                 person.validate()
                 if person.is_insertion:
-                    data_provider.insert_person(person.data, customer_id=customer_id)
+                    person_id = data_provider.insert_person(person.data, customer_id=customer_id)
                 else:
+                    person_id = person.data['person_id']
                     data_provider.update_person(person.data)
+                logger.info(f'Saved person {person_id} from customer {customer_id}')
 
             data_provider.commit()
-            return dict(
-                user_message=UserMessage(message='Customer saved successfully', header='Success', type='success'),
-                dog_id=dog_id)
+            return CallbackData(
+                user_message=UserMessage(message='Customer saved successfully', header='Success', type='success'))
         except RuntimeError as e:
             data_provider.rollback()
-            return dict(user_message=UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger'))
+            return CallbackData(
+                user_message=UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger'))
 
     @staticmethod
     def __add_new_dog_tab(dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
         new_dog_tab = Controller.make_dog_tab(dog=None, is_insertion=True)
         dogs_tabs.insert(len(dogs_tabs) - 1, new_dog_tab)
-        return dogs_tabs, Controller.__get_tab_id(new_dog_tab)
+        new_dog_id = new_dog_tab.tab_id
+        return dogs_tabs, new_dog_id
 
     @staticmethod
     def __get_tab_id(tab: bootstrap.Tab):
@@ -201,16 +227,16 @@ class Controller:
         }
         # TODO update label when name is changed
         return bootstrap.Tab(
-            id=Ids.element('DogTab', dog['dog_id']),
-            className='p-3 border border-top-0 border-secondary',
-            label=dog['dog_name'],
-            tab_id=str(dog['dog_id']),
-            children=DictFormAIO(
+            DictFormAIO(
                 data=dog,
                 fields_config=cls.dog_fields_config,
                 is_insertion=is_insertion,
                 form_id=cls.id_dog_form,
-                form_index=dog['dog_id']))
+                form_index=dog['dog_id']),
+            id=Ids.element('DogTab', dog['dog_id']),
+            className='p-3 border border-top-0 border-secondary',
+            label=dog['dog_name'],
+            tab_id=str(dog['dog_id']))
 
     @classmethod
     def make_person_panel(cls, person: Optional[dict], is_insertion: bool) -> html.Div:
@@ -219,14 +245,14 @@ class Controller:
                 'person_id': cls.__generate_new_person_id(),
             }
         return html.Div(
-            id=Ids.element('PersonContainer', person['person_id']),
-            className='mt-2 p-3 border border-secondary',
-            children=DictFormAIO(
+            DictFormAIO(
                 data=person,
                 fields_config=Controller.person_fields_config,
                 is_insertion=is_insertion,
                 form_id=Controller.id_person_form,
-                form_index=person['person_id']))
+                form_index=person['person_id']),
+            id=Ids.element('PersonContainer', person['person_id']),
+            className='mt-2 p-3 border border-secondary')
 
     @staticmethod
     @callback(Output(__id_field_dog_name, 'invalid'), Output(__id_feedback_dog_name, 'children'),
@@ -270,13 +296,9 @@ class Controller:
         return f'N-{cls.__last_new_person_id}'
 
 
-def layout(dog_id=None) -> html.Div:
+def make_layout(dog_id):
     customer, is_insertion = (Customer(), True) if dog_id is None \
         else (Controller.get_customer_by_dog_id(dog_id=dog_id), False)
-
-    data_storage = [
-        dcc.Store(data=False, id=Controller.id_store_is_modified)
-    ]
 
     add_dog_tab = bootstrap.Tab(
         'Au Au! New dog in the oven...',
@@ -296,7 +318,6 @@ def layout(dog_id=None) -> html.Div:
             )
         ),
     )
-
     row_customer_data = bootstrap.Row(
         bootstrap.Col(
             html.Div(
@@ -309,7 +330,6 @@ def layout(dog_id=None) -> html.Div:
             )
         )
     )
-
     rows_persons = [
         bootstrap.Row(
             bootstrap.Col(
@@ -318,23 +338,30 @@ def layout(dog_id=None) -> html.Div:
         )
         for person in customer.persons
     ]
-
     row_buttons = bootstrap.Row(
         bootstrap.Col(
-            html.Div(
+            html.Div([
+                bootstrap.Button(
+                    'Reset',
+                    id=Controller.id_reset_button,
+                    className='btn-reset'),
                 bootstrap.Button(
                     'Save',
                     id=Controller.id_save_button,
-                    className='btn-success'),
-                className='d-flex flex-row-reverse mt-2 p-3'
+                    className='btn-success')],
+                className='d-flex flex-row-reverse mt-2 gap-3'
             )
         )
     )
+    children = [row_dogs_tabs] + rows_persons + [row_customer_data, row_buttons]
+    return children
 
-    children = data_storage + [row_dogs_tabs] + rows_persons + [row_customer_data, row_buttons]
 
+def layout(dog_id=None) -> html.Div:
     return html.Div(
         bootstrap.Container(
-            children
+            make_layout(dog_id),
+            id=Controller.id_main_container,
+            class_name='my-2',
         )
     )

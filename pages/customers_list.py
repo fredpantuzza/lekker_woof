@@ -1,5 +1,21 @@
-from dash import dash_table, html
+from typing import Any
+
+import pandas as pd
+from dash import dash_table, html, Input, State
+from dash.exceptions import PreventUpdate
+
+from components.page_callback import page_callback, Action, CallbackData
 from controls.data_provider import DataProvider
+
+
+class Ids:
+    @classmethod
+    def element(cls, component_type: Any, index: Any = '') -> dict:
+        return {
+            'page': 'customer_list',
+            'component': component_type,
+            'index': index
+        }
 
 
 class Controller:
@@ -17,7 +33,7 @@ class Controller:
         {'id': 'email_addresses', 'name': 'E-mails'},
     ]
 
-    id_customers_data_table = 'CustomersDataTable'
+    id_customers_data_table = Ids.element('DataTable', 'customers')
 
     page_size = 10
 
@@ -29,18 +45,35 @@ class Controller:
         customers_df['sex'] = customers_df['is_male'].map({1: 'Male', 0: 'Female'})
         return customers_df.to_dict('records')
 
+    @staticmethod
+    @page_callback(
+        action=Action.OPEN_CUSTOMER,
+        inputs=dict(
+            active_cell=Input(id_customers_data_table, 'active_cell'),
+            table_data=State(id_customers_data_table, 'data'),
+        )
+    )
+    def on_cell_clicked(active_cell: dict, table_data: dict) -> CallbackData:
+        if not active_cell:
+            raise PreventUpdate
+        # FIXME doesn't work with filters
+        row = active_cell['row_id'] - 1
+        customers_df = pd.DataFrame.from_records(table_data)
+        dog_id = customers_df.at[row, 'dog_id']
+        return CallbackData(dog_id=dog_id)
+
 
 def layout() -> html.Div:
     customers = Controller.load_customers()
 
-    return html.Div(
+    return html.Div([
         dash_table.DataTable(
             id=Controller.id_customers_data_table,
             data=customers,
             columns=Controller.customers_columns,
             editable=False,
             row_deletable=False,
-            row_selectable='single',
+            row_selectable=False,
             filter_action='native',
             filter_options={'case': 'insensitive'},
             sort_action='native',
@@ -60,4 +93,4 @@ def layout() -> html.Div:
                 }
             ]
         )
-    )
+    ])
