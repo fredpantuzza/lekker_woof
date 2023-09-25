@@ -6,8 +6,8 @@ import dash_bootstrap_components as bootstrap
 from dash import Dash, Output, Input, ctx, callback, dcc
 from dash.exceptions import PreventUpdate
 
+import pages.customer_list as customer_list
 import pages.customer_profile as customer_profile
-import pages.customers_list as customer_list
 from components import page_callback
 from components.page_callback import Action, CallbackData
 from controls.types import UserMessage, user_message_to_callback_output
