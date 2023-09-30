@@ -2,6 +2,7 @@ import logging
 from typing import Any, Optional
 
 import dash_bootstrap_components as bootstrap
+import pandas as pd
 from dash import callback, Input, Output, html, State
 from dash.exceptions import PreventUpdate
 
@@ -40,7 +41,7 @@ class Controller:
     id_training_data_form = 'TrainingDataForm'
 
     @staticmethod
-    def get_training_by_id(training_id: int) -> dict:
+    def get_training_by_id(training_id: int) -> pd.DataFrame:
         data_provider = DataProvider()
         return data_provider.get_training_by_id(training_id=training_id)
 
@@ -98,9 +99,14 @@ class Controller:
 
 
 def make_layout(training_id: Optional[int]) -> list:
-    training, is_insertion = ({}, True) \
+    training_df, is_insertion = (pd.DataFrame(), True) \
         if training_id is None \
         else (Controller.get_training_by_id(training_id=training_id), False)
+
+    trainings = training_df.to_dict('records')
+    if len(trainings) != 1:
+        raise ValueError(f'Expected 1 and only 1 training, but found {len(trainings)} for id {training_id}')
+    training = trainings[0]
 
     row_training_data = bootstrap.Row(
         bootstrap.Col(

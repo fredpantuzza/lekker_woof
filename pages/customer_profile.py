@@ -1,10 +1,13 @@
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
 import dash_bootstrap_components as bootstrap
+import pandas as pd
 from bidict import bidict
 from dash import callback, Input, Output, html, MATCH, State, ALL
+from dash.dash_table import DataTable
 from dash.exceptions import PreventUpdate
 
 from components.dict_form import DictFormAIO, DataStore as FormData, FieldType, Ids as FormIds
@@ -21,6 +24,22 @@ class Sex(str, Enum):
     FEMALE = 'Female'
 
 
+@dataclass
+class DogProfile:
+    subscriptions: pd.DataFrame
+    individual_classes: pd.DataFrame
+
+
+@dataclass
+class CustomerProfile:
+    customer: Customer
+    dog_profile_by_id: dict[int, DogProfile]
+
+    def get_dog_profile(self, dog_id: int) -> DogProfile:
+        return self.dog_profile_by_id[dog_id] if dog_id in self.dog_profile_by_id \
+            else DogProfile(subscriptions=pd.DataFrame(), individual_classes=pd.DataFrame())
+
+
 class Ids:
     @classmethod
     def element(cls, component_type: Any, index: Any = '') -> dict:
@@ -29,6 +48,10 @@ class Ids:
             'component': component_type,
             'index': index
         }
+
+    @classmethod
+    def dog_subscriptions_table(cls, dog_id: Any = '') -> dict:
+        return cls.element('DataTable', f'DogSubscriptions-{dog_id}')
 
 
 class Controller:
@@ -40,6 +63,10 @@ class Controller:
         'customer_notes': {'label': 'Notes', 'type': FieldType.TEXTAREA},
         'customer_created_timestamp': {'label': 'Registration date', 'type': FieldType.STORE}
     }
+
+    # TODO break down address fields, one more email, notes to Short description of dog's behaviour, deactivate
+    # TODO add cost per km 0.4 2x. Can we use maps distance API?
+    # TODO long-term countability
 
     dog_fields_config = {
         'dog_id': {'label': 'ID', 'type': FieldType.TEXT, 'readonly': True},
@@ -61,6 +88,17 @@ class Controller:
         'email_address': {'label': 'E-mail', 'type': FieldType.EMAIL, 'required': True},
         'person_created_timestamp': {'label': 'Registration date', 'type': FieldType.STORE}
     }
+
+    dog_subscriptions_columns = [
+        {'id': 'training_name', 'name': 'Training'},
+        {'id': 'training_price', 'name': 'Reg. price', 'type': 'numeric'},
+        {'id': 'actual_price', 'name': 'Paid', 'type': 'numeric'},
+        {'id': 'total_classes_online', 'name': '# Online', 'type': 'numeric'},
+        {'id': 'taken_classes_online', 'name': '# Taken', 'type': 'numeric'},
+        {'id': 'total_classes_in_person', 'name': '# In person', 'type': 'numeric'},
+        {'id': 'taken_classes_in_person', 'name': '# Taken', 'type': 'numeric'},
+        {'id': 'created_timestamp', 'name': 'Created on', 'type': 'datetime'},
+    ]
 
     id_main_container = Ids.element('Container')
     id_dogs_tabs = Ids.element('Tabs', 'Dogs')
@@ -99,9 +137,23 @@ class Controller:
                                      form_id=Controller.id_dog_form, form_index=MATCH)
 
     @staticmethod
-    def get_customer_by_dog_id(dog_id: int) -> Customer:
+    def get_profile_by_dog_id(dog_id: int) -> CustomerProfile:
         data_provider = DataProvider()
-        return data_provider.get_customer_by_dog_id(dog_id=dog_id)
+        customer = data_provider.get_customer_by_dog_id(dog_id=dog_id)
+
+        dogs_profiles = {}
+        for dog in customer.dogs:
+            dog_id = dog['dog_id']
+            subscriptions = data_provider.get_subscriptions_by_dog_id(dog_id=dog_id)
+            dogs_profiles[dog_id] = DogProfile(
+                subscriptions=subscriptions,
+                individual_classes=pd.DataFrame(),
+            )
+
+        return CustomerProfile(
+            customer=customer,
+            dog_profile_by_id=dogs_profiles
+        )
 
     @staticmethod
     @callback(
@@ -210,7 +262,12 @@ class Controller:
 
     @classmethod
     def __add_new_dog_tab(cls, dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
-        new_dog_tab = Controller.make_dog_tab(dog=cls.__make_new_dog(), is_insertion=True)
+        new_dog_tab = Controller.make_dog_tab(
+            dog=cls.__make_new_dog(),
+            profile=DogProfile(
+                subscriptions=pd.DataFrame(),
+                individual_classes=pd.DataFrame(),
+            ), is_insertion=True)
         dogs_tabs.insert(len(dogs_tabs) - 1, new_dog_tab)
         new_dog_id = new_dog_tab.tab_id
         return dogs_tabs, new_dog_id
@@ -220,19 +277,42 @@ class Controller:
         return tab['props']['tab_id']
 
     @classmethod
-    def make_dog_tab(cls, dog: dict, is_insertion: bool) -> bootstrap.Tab:
+    def make_dog_tab(cls, dog: dict, profile: DogProfile, is_insertion: bool) -> bootstrap.Tab:
         # TODO update label when name is changed
+        dog_id = dog['dog_id']
+        dog_form = DictFormAIO(
+            data=dog,
+            fields_config=cls.dog_fields_config,
+            is_insertion=is_insertion,
+            form_id=cls.id_dog_form,
+            form_index=dog_id)
+        subscriptions_table = cls.make_subscriptions_table(dog_id, profile.subscriptions) \
+            if profile.subscriptions is not None and not profile.subscriptions.empty \
+            else html.Div('No trainings yet.', className='p-3')
         return bootstrap.Tab(
-            DictFormAIO(
-                data=dog,
-                fields_config=cls.dog_fields_config,
-                is_insertion=is_insertion,
-                form_id=cls.id_dog_form,
-                form_index=dog['dog_id']),
-            id=Ids.element('DogTab', dog['dog_id']),
+            [
+                dog_form,
+                subscriptions_table
+            ],
+            id=Ids.element('DogTab', dog_id),
             className='p-3 border border-top-0 border-secondary',
             label=dog['dog_name'],
-            tab_id=str(dog['dog_id']))
+            tab_id=str(dog_id))
+
+    @classmethod
+    def make_subscriptions_table(cls, dog_id: int, subscriptions: pd.DataFrame) -> DataTable:
+        return DataTable(
+            id=Ids.dog_subscriptions_table(dog_id=dog_id),
+            data=subscriptions.to_dict('records'),
+            columns=Controller.dog_subscriptions_columns,
+            editable=False,
+            row_deletable=False,
+            row_selectable=False,
+            filter_action='native',
+            filter_options={'case': 'insensitive'},
+            sort_action='native',
+            style_table={'overflow': 'scroll'},
+        )
 
     @classmethod
     def make_person_panel(cls, person: dict, is_insertion: bool) -> html.Div:
@@ -278,11 +358,14 @@ class Controller:
         return False, ''
 
     @classmethod
-    def make_new_customer(cls) -> Customer:
-        return Customer(
-            customer_data={},
-            dogs=[cls.__make_new_dog()],
-            persons=[cls.__make_new_person()]
+    def make_new_profile(cls) -> CustomerProfile:
+        return CustomerProfile(
+            customer=Customer(
+                customer_data={},
+                dogs=[cls.__make_new_dog()],
+                persons=[cls.__make_new_person()]
+            ),
+            dog_profile_by_id={},
         )
 
     @classmethod
@@ -310,9 +393,11 @@ class Controller:
 
 
 def make_layout(dog_id: int) -> list:
-    customer, is_insertion = (Controller.make_new_customer(), True) \
+    customer_profile, is_insertion = (Controller.make_new_profile(), True) \
         if dog_id is None \
-        else (Controller.get_customer_by_dog_id(dog_id=dog_id), False)
+        else (Controller.get_profile_by_dog_id(dog_id=dog_id), False)
+
+    customer = customer_profile.customer
 
     add_dog_tab = bootstrap.Tab(
         'Au Au! New dog in the oven...',
@@ -322,11 +407,14 @@ def make_layout(dog_id: int) -> list:
         label='+',
         tab_id=Controller.tab_id_add_dog_tab)
 
+    dog_tabs = [Controller.make_dog_tab(dog=dog, profile=customer_profile.get_dog_profile(dog_id=dog_id),
+                                        is_insertion=is_insertion) for dog in customer.dogs] + \
+               [add_dog_tab]
+
     row_dogs_tabs = bootstrap.Row(
         bootstrap.Col(
             bootstrap.Tabs(
-                [Controller.make_dog_tab(dog, is_insertion=is_insertion) for dog in customer.dogs]
-                + [add_dog_tab],
+                dog_tabs,
                 id=Controller.id_dogs_tabs,
                 active_tab=str(dog_id)
             )

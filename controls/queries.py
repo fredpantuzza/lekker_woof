@@ -129,3 +129,30 @@ UPDATE training SET
     classes_in_person=:classes_in_person
 WHERE training_id=:training_id
 '''
+
+sql_subscriptions_by_dog_id = '''
+SELECT
+    s.subscription_id,
+    s.dog_id,
+    s.actual_price,
+    s.notes,
+    s.created_timestamp,
+    t.name AS training_name,
+    t.price AS training_price,
+    t.classes_online AS total_classes_online,
+    t.classes_in_person AS total_classes_in_person,
+    taken.taken_classes_online,
+    taken.taken_classes_in_person
+FROM subscription s
+INNER JOIN training t USING (training_id)
+INNER JOIN (
+    SELECT
+        c.subscription_id,
+        COUNT(*) FILTER (WHERE c.is_online = FALSE) AS taken_classes_online,
+        COUNT(*) FILTER (WHERE c.is_online = TRUE) AS taken_classes_in_person
+    FROM class c
+    WHERE c.subscription_id IS NOT NULL
+    GROUP BY c.subscription_id
+) taken USING (subscription_id)
+WHERE s.dog_id=:dog_id
+'''

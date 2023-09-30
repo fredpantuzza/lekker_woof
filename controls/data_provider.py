@@ -101,13 +101,9 @@ class DataProvider:
         logger.debug('get_all_trainings')
         return pd.read_sql(queries.sql_get_all_trainings, self.__connection)
 
-    def get_training_by_id(self, training_id: int) -> dict:
+    def get_training_by_id(self, training_id: int) -> pd.DataFrame:
         logger.debug(f'get_training_by_id {training_id}')
-        training_df = pd.read_sql(queries.sql_training_by_id, self.__connection, params={'training_id': training_id})
-        trainings = training_df.to_dict('records')
-        if len(trainings) != 1:
-            raise ValueError(f'Expected 1 and only 1 training, but found {len(trainings)} for id {training_id}')
-        return trainings[0]
+        return pd.read_sql(queries.sql_training_by_id, self.__connection, params={'training_id': training_id})
 
     def insert_training(self, training_data: dict) -> int:
         logger.info(f'Inserting training: ${training_data}')
@@ -120,3 +116,7 @@ class DataProvider:
         logger.info(f'Updating training: ${training_data}')
         self.__connection.execute(queries.sql_update_training, training_data)
         logger.info(f'Training updated')
+
+    def get_subscriptions_by_dog_id(self, dog_id: int) -> pd.DataFrame:
+        logger.debug(f'get_subscriptions_by_dog_id {dog_id}')
+        return pd.read_sql(queries.sql_subscriptions_by_dog_id, self.__connection, params={'dog_id': dog_id})
