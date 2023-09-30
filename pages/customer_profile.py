@@ -62,15 +62,15 @@ class Controller:
         'person_created_timestamp': {'label': 'Registration date', 'type': FieldType.STORE}
     }
 
-    id_main_container = 'CustomerProfileContainer'
-    id_customer_data_form = 'CustomerDataForm'
-    id_dog_form = 'DogForm'
-    id_dogs_tabs = Ids.element('Tabs', 'dogs')
-    id_add_dog_tab = 'add-dog-tab'
-    id_person_form = 'PersonForm'
+    id_main_container = Ids.element('Container')
+    id_dogs_tabs = Ids.element('Tabs', 'Dogs')
     id_persons_tabs = Ids.element('Tabs', 'persons')
     id_reset_button = Ids.element('Button', 'reset-customer')
     id_save_button = Ids.element('Button', 'save-customer')
+    id_customer_data_form = 'CustomerForm'
+    id_dog_form = 'DogForm'
+    id_person_form = 'PersonForm'
+    tab_id_add_dog_tab = 'AddDog'
 
     # Dog validation components
     __dog_forms_filter = dict(form_id=id_dog_form, form_index=MATCH)
@@ -121,7 +121,7 @@ class Controller:
             assert len(dogs_tabs) > 0
             return dogs_tabs, Controller.__get_tab_id(dogs_tabs[0])
 
-        if active_tab == Controller.id_add_dog_tab:
+        if active_tab == Controller.tab_id_add_dog_tab:
             return Controller.__add_new_dog_tab(dogs_tabs)
         else:
             raise PreventUpdate
@@ -146,7 +146,7 @@ class Controller:
         else:
             dog_id = active_tab
         assert dog_id is not None
-        return make_layout(dog_id)
+        return make_layout(int(dog_id))
 
     @staticmethod
     @page_callback(
@@ -208,9 +208,9 @@ class Controller:
             return CallbackData(
                 user_message=UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger'))
 
-    @staticmethod
-    def __add_new_dog_tab(dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
-        new_dog_tab = Controller.make_dog_tab(dog=None, is_insertion=True)
+    @classmethod
+    def __add_new_dog_tab(cls, dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
+        new_dog_tab = Controller.make_dog_tab(dog=cls.__make_new_dog(), is_insertion=True)
         dogs_tabs.insert(len(dogs_tabs) - 1, new_dog_tab)
         new_dog_id = new_dog_tab.tab_id
         return dogs_tabs, new_dog_id
@@ -220,11 +220,7 @@ class Controller:
         return tab['props']['tab_id']
 
     @classmethod
-    def make_dog_tab(cls, dog: Optional[dict], is_insertion: bool) -> bootstrap.Tab:
-        dog = dog or {
-            'dog_id': cls.__generate_new_dog_id(),
-            'dog_name': cls.__default_dog_name,
-        }
+    def make_dog_tab(cls, dog: dict, is_insertion: bool) -> bootstrap.Tab:
         # TODO update label when name is changed
         return bootstrap.Tab(
             DictFormAIO(
@@ -239,11 +235,7 @@ class Controller:
             tab_id=str(dog['dog_id']))
 
     @classmethod
-    def make_person_panel(cls, person: Optional[dict], is_insertion: bool) -> html.Div:
-        if person is None:
-            person = {
-                'person_id': cls.__generate_new_person_id(),
-            }
+    def make_person_panel(cls, person: dict, is_insertion: bool) -> html.Div:
         return html.Div(
             DictFormAIO(
                 data=person,
@@ -286,6 +278,27 @@ class Controller:
         return False, ''
 
     @classmethod
+    def make_new_customer(cls) -> Customer:
+        return Customer(
+            customer_data={},
+            dogs=[cls.__make_new_dog()],
+            persons=[cls.__make_new_person()]
+        )
+
+    @classmethod
+    def __make_new_dog(cls) -> dict:
+        return {
+            'dog_id': cls.__generate_new_dog_id(),
+            'dog_name': cls.__default_dog_name,
+        }
+
+    @classmethod
+    def __make_new_person(cls) -> dict:
+        return {
+            'person_id': cls.__generate_new_person_id(),
+        }
+
+    @classmethod
     def __generate_new_dog_id(cls) -> str:
         cls.__last_new_dog_id += 1
         return f'N{cls.__last_new_dog_id}'
@@ -296,17 +309,18 @@ class Controller:
         return f'N-{cls.__last_new_person_id}'
 
 
-def make_layout(dog_id):
-    customer, is_insertion = (Customer(), True) if dog_id is None \
+def make_layout(dog_id: int) -> list:
+    customer, is_insertion = (Controller.make_new_customer(), True) \
+        if dog_id is None \
         else (Controller.get_customer_by_dog_id(dog_id=dog_id), False)
 
     add_dog_tab = bootstrap.Tab(
         'Au Au! New dog in the oven...',
-        id=Ids.element('DogTab', Controller.id_add_dog_tab),
+        id=Ids.element('Tab', Controller.tab_id_add_dog_tab),
         className='p-3 border border-top-0 border-secondary',
-        tab_class_name=Controller.id_add_dog_tab,
+        tab_class_name=Controller.tab_id_add_dog_tab,
         label='+',
-        tab_id=Controller.id_add_dog_tab)
+        tab_id=Controller.tab_id_add_dog_tab)
 
     row_dogs_tabs = bootstrap.Row(
         bootstrap.Col(

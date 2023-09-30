@@ -57,10 +57,10 @@ class Controller:
         if not active_cell:
             raise PreventUpdate
         # FIXME doesn't work with filters
-        row = active_cell['row_id'] - 1
+        row = active_cell['row']
         customers_df = pd.DataFrame.from_records(table_data)
         dog_id = customers_df.at[row, 'dog_id']
-        return CallbackData(dog_id=dog_id)
+        return CallbackData(entity_id=dog_id)
 
 
 def layout() -> html.Div:
