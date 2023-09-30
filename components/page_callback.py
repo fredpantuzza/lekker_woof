@@ -12,12 +12,13 @@ id_page_callback_store = 'page_callback_store'
 class Action(IntEnum):
     SHOW_USER_MESSAGE = 1
     OPEN_CUSTOMER = 2
+    OPEN_TRAINING = 3
 
 
 # TODO use NotRequired after upgrading to py 3.11
 class CallbackData(TypedDict, total=False):
     action: Action
-    dog_id: int
+    entity_id: int
     user_message: UserMessage
 
 

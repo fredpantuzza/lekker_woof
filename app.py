@@ -8,9 +8,11 @@ from dash.exceptions import PreventUpdate
 
 import pages.customer_list as customer_list
 import pages.customer_profile as customer_profile
+import pages.training_list as training_list
 from components import page_callback
 from components.page_callback import Action, CallbackData
 from controls.types import UserMessage, user_message_to_callback_output
+from pages import training_profile
 
 app = Dash(__name__, external_stylesheets=[bootstrap.themes.FLATLY], suppress_callback_exceptions=True)
 
@@ -29,6 +31,7 @@ class Ids:
 
 class Controller:
     id_body_container = Ids.element('BodyContainer')
+    id_training_list_link = Ids.element('TrainingListLink')
     id_customers_list_link = Ids.element('CustomersListLink')
     id_new_customer_link = Ids.element('NewCustomerLink')
     id_user_message = Ids.element('ToastUserMessage')
@@ -46,11 +49,13 @@ class Controller:
         inputs=dict(
             customers_list_clicks=Input(id_customers_list_link, 'n_clicks'),
             new_customer_clicks=Input(id_new_customer_link, 'n_clicks'),
+            training_list_clicks=Input(id_training_list_link, 'n_clicks'),
             callback_data=Input(page_callback.id_page_callback_store, 'data'),
         ),
         prevent_initial_call=True)
     def main_callback(
-            customers_list_clicks: int, new_customer_clicks: int, callback_data: CallbackData) -> dict:
+            customers_list_clicks: int, new_customer_clicks: int, training_list_clicks: int,
+            callback_data: CallbackData) -> dict:
         # TODO confirm with user before leaving modified form.
         triggered_id = ctx.triggered_id
         if triggered_id is None:
@@ -72,6 +77,9 @@ class Controller:
         elif triggered_id == Controller.id_new_customer_link:
             output['body'] = customer_profile.layout(dog_id=None)
 
+        elif triggered_id == Controller.id_training_list_link:
+            output['body'] = training_list.layout()
+
         elif triggered_id == page_callback.id_page_callback_store:
             if callback_data is None:
                 raise PreventUpdate('Initial callback')
@@ -81,8 +89,13 @@ class Controller:
                 user_message: UserMessage = callback_data['user_message']
                 output.update(**user_message_to_callback_output(user_message))
             elif action == Action.OPEN_CUSTOMER:
-                assert 'dog_id' in callback_data
-                output['body'] = customer_profile.layout(dog_id=callback_data['dog_id'])
+                assert 'entity_id' in callback_data
+                output['body'] = customer_profile.layout(dog_id=callback_data['entity_id'])
+            elif action == Action.OPEN_TRAINING:
+                assert 'entity_id' in callback_data
+                output['body'] = training_profile.layout(training_id=callback_data['entity_id'])
+            else:
+                assert False, f'Unexpected action {action.name}'
 
         return output
 
@@ -91,6 +104,7 @@ app.layout = bootstrap.Container(
     [
         bootstrap.NavbarSimple(
             [
+                bootstrap.NavItem(bootstrap.NavLink('Trainings', id=Controller.id_training_list_link, href='#')),
                 bootstrap.NavItem(bootstrap.NavLink('Customers', id=Controller.id_customers_list_link, href='#')),
                 bootstrap.NavItem(bootstrap.NavLink('New customer', id=Controller.id_new_customer_link, href='#')),
             ],
