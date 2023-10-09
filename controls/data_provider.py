@@ -55,6 +55,7 @@ class DataProvider:
         persons_df = persons_df.drop_duplicates(subset=['person_id'], keep='first')
         persons = persons_df.to_dict('records')
 
+        # TODO return DataFrames instead
         return Customer(customer_data, dogs, persons)
 
     def insert_customer(self, customer_data: dict) -> int:
@@ -120,3 +121,42 @@ class DataProvider:
     def get_subscriptions_by_dog_id(self, dog_id: int) -> pd.DataFrame:
         logger.debug(f'get_subscriptions_by_dog_id {dog_id}')
         return pd.read_sql(queries.sql_subscriptions_by_dog_id, self.__connection, params={'dog_id': dog_id})
+
+    def get_subscription_by_id(self, subscription_id: int) -> pd.DataFrame:
+        logger.debug(f'get_subscription_by_id {subscription_id}')
+        return pd.read_sql(queries.sql_subscription_by_id, self.__connection,
+                           params={'subscription_id': subscription_id})
+
+    def insert_subscription(self, subscription_data: dict) -> int:
+        logger.info(f'Inserting subscription: ${subscription_data}')
+        cur = self.__connection.execute(queries.sql_insert_subscription, subscription_data)
+        subscription_id = cur.lastrowid
+        logger.info(f'Subscription inserted with id ${subscription_id}')
+        return subscription_id
+
+    def update_subscription(self, subscription_data: dict) -> None:
+        logger.info(f'Updating subscription: ${subscription_data}')
+        self.__connection.execute(queries.sql_update_subscription, subscription_data)
+        logger.info(f'Subscription updated')
+
+    def get_classes_by_subscription_id(self, subscription_id: int) -> pd.DataFrame:
+        logger.debug(f'get_classes_by_subscription_id {subscription_id}')
+        return pd.read_sql(queries.sql_classes_by_subscription_id, self.__connection,
+                           params={'subscription_id': subscription_id})
+
+    def get_single_classes_by_dog_id(self, dog_id: int) -> pd.DataFrame:
+        logger.debug(f'get_single_classes_by_dog_id {dog_id}')
+        return pd.read_sql(queries.sql_single_classes_by_dog_id, self.__connection,
+                           params={'dog_id': dog_id})
+
+    def insert_class(self, class_data: dict) -> int:
+        logger.info(f'Inserting class: ${class_data}')
+        cur = self.__connection.execute(queries.sql_insert_class, class_data)
+        class_id = cur.lastrowid
+        logger.info(f'Class inserted with id ${class_id}')
+        return class_id
+
+    def update_class(self, class_data: dict) -> None:
+        logger.info(f'Updating class: ${class_data}')
+        self.__connection.execute(queries.sql_update_class, class_data)
+        logger.info(f'Class updated')

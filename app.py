@@ -6,13 +6,10 @@ import dash_bootstrap_components as bootstrap
 from dash import Dash, Output, Input, ctx, callback, dcc
 from dash.exceptions import PreventUpdate
 
-import pages.customer_list as customer_list
-import pages.customer_profile as customer_profile
-import pages.training_list as training_list
 from components import page_callback
 from components.page_callback import Action, CallbackData
 from controls.types import UserMessage, user_message_to_callback_output
-from pages import training_profile
+from pages import training_profile, customer_list, customer_profile, training_list, subscription_profile
 
 app = Dash(__name__, external_stylesheets=[bootstrap.themes.FLATLY], suppress_callback_exceptions=True)
 
@@ -94,6 +91,9 @@ class Controller:
             elif action == Action.OPEN_TRAINING:
                 assert 'entity_id' in callback_data
                 output['body'] = training_profile.layout(training_id=callback_data['entity_id'])
+            elif action == Action.OPEN_SUBSCRIPTION:
+                assert 'entity_id' in callback_data
+                output['body'] = subscription_profile.layout(subscription_id=callback_data['entity_id'])
             else:
                 assert False, f'Unexpected action {action.name}'
 

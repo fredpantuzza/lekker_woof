@@ -13,6 +13,7 @@ class Action(IntEnum):
     SHOW_USER_MESSAGE = 1
     OPEN_CUSTOMER = 2
     OPEN_TRAINING = 3
+    OPEN_SUBSCRIPTION = 4
 
 
 # TODO use NotRequired after upgrading to py 3.11

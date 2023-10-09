@@ -1,0 +1,11 @@
+@import "common.scss";
+
+.page-subscription-profile .dict-form-field.training_id {
+    min-width: 40%;
+    flex-grow: 1;
+}
+
+.page-subscription-profile .dict-form-field.notes {
+    width: 100%;
+    flex-grow: 1;
+}

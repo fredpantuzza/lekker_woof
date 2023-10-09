@@ -1,19 +1,20 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 import dash_bootstrap_components as bootstrap
 import pandas as pd
 from bidict import bidict
-from dash import callback, Input, Output, html, MATCH, State, ALL
+from dash import ALL, callback, ctx, html, Input, MATCH, Output, State
 from dash.dash_table import DataTable
 from dash.exceptions import PreventUpdate
 
-from components.dict_form import DictFormAIO, DataStore as FormData, FieldType, Ids as FormIds
-from components.page_callback import page_callback, Action, CallbackData
+from components.dict_form import DataStore as FormData, DictFormAIO, FieldType, Ids as FormIds
+from components.page_callback import Action, CallbackData, page_callback
 from controls.data_provider import DataProvider
 from controls.types import Customer, UserMessage
+from pages.customer_list import Ids
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -27,7 +28,7 @@ class Sex(str, Enum):
 @dataclass
 class DogProfile:
     subscriptions: pd.DataFrame
-    individual_classes: pd.DataFrame
+    single_classes: pd.DataFrame
 
 
 @dataclass
@@ -37,29 +38,44 @@ class CustomerProfile:
 
     def get_dog_profile(self, dog_id: int) -> DogProfile:
         return self.dog_profile_by_id[dog_id] if dog_id in self.dog_profile_by_id \
-            else DogProfile(subscriptions=pd.DataFrame(), individual_classes=pd.DataFrame())
+            else DogProfile(subscriptions=pd.DataFrame(), single_classes=pd.DataFrame())
 
 
 class Ids:
-    @classmethod
-    def element(cls, component_type: Any, index: Any = '') -> dict:
-        return {
-            'page': 'customer_profile',
-            'component': component_type,
-            'index': index
-        }
+    class Id(TypedDict):
+        page: str
+        component: Any
+        index: Any
 
     @classmethod
-    def dog_subscriptions_table(cls, dog_id: Any = '') -> dict:
-        return cls.element('DataTable', f'DogSubscriptions-{dog_id}')
+    def element(cls, component_type: Any, index: Any = '') -> Id:
+        return Ids.Id(
+            page='customer_profile',
+            component=component_type,
+            index=index
+        )
+
+    @classmethod
+    def dog_subscriptions_table(cls, dog_id: Any = '') -> Id:
+        return cls.element('DataTable-DogSubscriptions', dog_id)
+
+    @classmethod
+    def get_dog_id_from_subscription_table_id(cls, element_id: Id) -> int:
+        return int(element_id['index'])
+
+    @classmethod
+    def dog_single_classes_table(cls, dog_id: Any = '') -> Id:
+        return cls.element('DataTable-DogSingleClasses', dog_id)
 
 
 class Controller:
     customer_data_fields_config = {
         'customer_id': {'label': 'ID', 'type': FieldType.STORE},
         'address': {'label': 'Address', 'type': FieldType.TEXT},
-        'balance_in_eur': {'label': 'Cash balance', 'type': FieldType.NUMBER, 'input_label_left': '€',
-                           'required': True},
+        'balance_in_eur': {
+            'label': 'Cash balance', 'type': FieldType.NUMBER, 'input_label_left': '€',
+            'required': True
+        },
         'customer_notes': {'label': 'Notes', 'type': FieldType.TEXTAREA},
         'customer_created_timestamp': {'label': 'Registration date', 'type': FieldType.STORE}
     }
@@ -72,9 +88,11 @@ class Controller:
         'dog_id': {'label': 'ID', 'type': FieldType.TEXT, 'readonly': True},
         'dog_name': {'label': 'Name', 'type': FieldType.TEXT, 'required': True},
         'birth_date': {'label': 'Birth date', 'type': FieldType.DATE},
-        'is_male': {'label': 'Sex', 'type': FieldType.RADIO,
-                    'display_value_converter_bidict': bidict({1: Sex.MALE, 0: Sex.FEMALE}),
-                    'options': [sex for sex in Sex], 'required': True},
+        'is_male': {
+            'label': 'Sex', 'type': FieldType.RADIO,
+            'display_value_converter_bidict': bidict({1: Sex.MALE, 0: Sex.FEMALE}),
+            'options': [sex for sex in Sex], 'required': True
+        },
         'breed': {'label': 'Breed', 'type': FieldType.TEXT, 'required': True},  # TODO dropdown
         'dog_created_timestamp': {'label': 'Registration date', 'type': FieldType.TEXT, 'readonly': True},
         'dog_notes': {'label': 'Notes', 'type': FieldType.TEXTAREA}
@@ -98,6 +116,12 @@ class Controller:
         {'id': 'total_classes_in_person', 'name': '# In person', 'type': 'numeric'},
         {'id': 'taken_classes_in_person', 'name': '# Taken', 'type': 'numeric'},
         {'id': 'created_timestamp', 'name': 'Created on', 'type': 'datetime'},
+    ]
+
+    dog_single_classes_columns = [
+        {'id': 'single_class_price', 'name': 'Price', 'type': 'numeric'},
+        {'id': 'online', 'name': 'Online', 'type': 'any'},
+        {'id': 'class_date', 'name': 'Date', 'type': 'datetime'},
     ]
 
     id_main_container = Ids.element('Container')
@@ -132,28 +156,57 @@ class Controller:
     __default_dog_name = 'New Doggo'
 
     @staticmethod
-    def __id_dog_field(field_name: str):
-        return FormIds.field_element(field_type=FieldType.TEXT, field_name=field_name,
-                                     form_id=Controller.id_dog_form, form_index=MATCH)
-
-    @staticmethod
     def get_profile_by_dog_id(dog_id: int) -> CustomerProfile:
         data_provider = DataProvider()
         customer = data_provider.get_customer_by_dog_id(dog_id=dog_id)
 
         dogs_profiles = {}
         for dog in customer.dogs:
-            dog_id = dog['dog_id']
-            subscriptions = data_provider.get_subscriptions_by_dog_id(dog_id=dog_id)
-            dogs_profiles[dog_id] = DogProfile(
+            other_dog_id = dog['dog_id']
+            subscriptions = data_provider.get_subscriptions_by_dog_id(dog_id=other_dog_id)
+            single_classes = data_provider.get_single_classes_by_dog_id(dog_id=other_dog_id)
+            dogs_profiles[other_dog_id] = DogProfile(
                 subscriptions=subscriptions,
-                individual_classes=pd.DataFrame(),
+                single_classes=single_classes,
             )
 
         return CustomerProfile(
             customer=customer,
             dog_profile_by_id=dogs_profiles
         )
+
+    @staticmethod
+    @page_callback(
+        action=Action.OPEN_SUBSCRIPTION,
+        inputs=dict(
+            active_cell_list=Input(Ids.dog_subscriptions_table(dog_id=ALL), 'active_cell'),
+            table_data_list=State(Ids.dog_subscriptions_table(dog_id=ALL), 'data'),
+        )
+    )
+    def on_cell_clicked(active_cell_list: list[Optional[dict]], table_data_list: list[dict]) -> CallbackData:
+        if not ctx.triggered:
+            raise PreventUpdate
+        if len(ctx.triggered) > 1:
+            if any(elem_id is not None for elem_id in ctx.triggered_id):
+                logger.error(f'Unexpected ctx.triggered_id with {len(ctx.triggered)} elements '
+                             f'and not all being None: {ctx.triggered_id}')
+            raise PreventUpdate
+        assert len(ctx.triggered) == 1
+        active_cell = ctx.triggered[0]
+        triggered_id = ctx.triggered_id
+        triggered_dog_id = Ids.get_dog_id_from_subscription_table_id(element_id=triggered_id)
+        for table_data in table_data_list:
+            subscriptions_df = pd.DataFrame.from_records(table_data)
+            dog_id = subscriptions_df['dog_id'].drop_duplicates()
+            assert len(dog_id) == 1
+            dog_id = dog_id.iat[0]
+            if dog_id != triggered_dog_id:
+                continue
+            # FIXME doesn't work with filters
+            row = active_cell['value']['row']
+            subscription_id = subscriptions_df.at[row, 'subscription_id']
+            return CallbackData(entity_id=subscription_id)
+        raise PreventUpdate('Could not find table for the dog clicked on')
 
     @staticmethod
     @callback(
@@ -266,7 +319,7 @@ class Controller:
             dog=cls.__make_new_dog(),
             profile=DogProfile(
                 subscriptions=pd.DataFrame(),
-                individual_classes=pd.DataFrame(),
+                single_classes=pd.DataFrame(),
             ), is_insertion=True)
         dogs_tabs.insert(len(dogs_tabs) - 1, new_dog_tab)
         new_dog_id = new_dog_tab.tab_id
@@ -289,10 +342,16 @@ class Controller:
         subscriptions_table = cls.make_subscriptions_table(dog_id, profile.subscriptions) \
             if profile.subscriptions is not None and not profile.subscriptions.empty \
             else html.Div('No trainings yet.', className='p-3')
+        single_classes_table = cls.make_single_classes_table(dog_id, profile.single_classes) \
+            if profile.single_classes is not None and not profile.single_classes.empty \
+            else html.Div('No single classes.', className='p-3')
         return bootstrap.Tab(
             [
                 dog_form,
-                subscriptions_table
+                html.H5('Trainings', className='mt-4'),
+                subscriptions_table,
+                html.H5('Single classes', className='mt-4'),
+                single_classes_table
             ],
             id=Ids.element('DogTab', dog_id),
             className='p-3 border border-top-0 border-secondary',
@@ -308,10 +367,21 @@ class Controller:
             editable=False,
             row_deletable=False,
             row_selectable=False,
-            filter_action='native',
-            filter_options={'case': 'insensitive'},
-            sort_action='native',
-            style_table={'overflow': 'scroll'},
+            filter_action='none',
+            sort_action='none',
+        )
+
+    @classmethod
+    def make_single_classes_table(cls, dog_id: int, single_classes: pd.DataFrame) -> DataTable:
+        return DataTable(
+            id=Ids.dog_single_classes_table(dog_id=dog_id),
+            data=single_classes.to_dict('records'),
+            columns=Controller.dog_single_classes_columns,
+            editable=False,
+            row_deletable=False,
+            row_selectable=False,
+            filter_action='none',
+            sort_action='none',
         )
 
     @classmethod
@@ -407,14 +477,18 @@ def make_layout(dog_id: int) -> list:
         label='+',
         tab_id=Controller.tab_id_add_dog_tab)
 
-    dog_tabs = [Controller.make_dog_tab(dog=dog, profile=customer_profile.get_dog_profile(dog_id=dog_id),
-                                        is_insertion=is_insertion) for dog in customer.dogs] + \
-               [add_dog_tab]
+    dogs_tabs = []
+    for dog in customer.dogs:
+        other_dog_id = dog['dog_id']
+        dog_profile = customer_profile.get_dog_profile(dog_id=other_dog_id)
+        dog_tab = Controller.make_dog_tab(dog=dog, profile=dog_profile, is_insertion=is_insertion)
+        dogs_tabs.append(dog_tab)
+    dogs_tabs.append(add_dog_tab)
 
     row_dogs_tabs = bootstrap.Row(
         bootstrap.Col(
             bootstrap.Tabs(
-                dog_tabs,
+                dogs_tabs,
                 id=Controller.id_dogs_tabs,
                 active_tab=str(dog_id)
             )
@@ -464,6 +538,6 @@ def layout(dog_id=None) -> html.Div:
         bootstrap.Container(
             make_layout(dog_id),
             id=Controller.id_main_container,
-            class_name='my-2',
+            class_name='my-2 page-customer-profile',
         )
     )

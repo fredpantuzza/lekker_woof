@@ -1,9 +1,17 @@
 import json
 from typing import Any, TypeVar
 
+import pandas as pd
 from bidict import bidict
 
 _T = TypeVar('_T')
+
+
+def get_single_row_as_dict(df: pd.DataFrame) -> dict:
+    records = df.to_dict('records')
+    if len(records) != 1:
+        raise ValueError(f'Expected 1 and only 1 record, but found {len(records)}')
+    return records[0]
 
 
 def flatten(ls: list[list[_T]]) -> list[_T]:
