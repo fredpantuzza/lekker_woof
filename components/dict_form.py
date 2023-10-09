@@ -24,6 +24,7 @@ class FieldType(str, Enum):
     TEXTAREA = 'TEXTAREA'
     DATE = 'DATE'
     RADIO = 'RADIO'
+    SELECT = 'SELECT'
 
 
 class FieldConfig(TypedDict, total=False):  # total=False means all keys are optional
@@ -152,6 +153,7 @@ class DictFormAIO(html.Div):
         FieldType.TEXTAREA: 'value',
         FieldType.DATE: 'date',
         FieldType.RADIO: 'value',
+        FieldType.SELECT: 'value',
     }
 
     # constants
@@ -165,7 +167,7 @@ class DictFormAIO(html.Div):
     __all_fields_invalid_filter = tuple(
         Input(Ids.field_element(field_type=field_type, field_name=ALL, form_id=MATCH, form_index=MATCH), 'invalid')
         for field_type, storage in __storage_by_field_type.items()
-        if field_type not in [FieldType.STORE, FieldType.DATE, FieldType.RADIO])
+        if field_type not in [FieldType.STORE, FieldType.DATE, FieldType.RADIO, FieldType.SELECT])
 
     def __init__(self, data: dict, fields_config: dict[str, FieldConfig] = {},
                  is_insertion: bool = False, form_id: Optional[str] = None, form_index: Optional[Any] = '',
@@ -180,7 +182,7 @@ class DictFormAIO(html.Div):
           * label: label of the field_name. Default=field_name
           * display_value_converter_bidict: bidict where the primary key is the DB value and the inverse key is the
             display value.
-          * options: options for multi-choice fields, like radio. Ignored for all the rest.
+          * options: options for multi-choice fields, like radio and select. Ignored for all the rest.
         :param is_insertion: Indicate if this form represents a new entity.
         :param form_id: id of the component. If None, it'll be auto-generated.
         :param form_index: optional additional index to the form_id, if needed.
@@ -336,6 +338,9 @@ class DictFormAIO(html.Div):
         if field_type == FieldType.RADIO:
             return bootstrap.RadioItems(
                 id=field_id, value=display_value, options=field_value_options, inline=True)
+        if field_type == FieldType.SELECT:
+            return bootstrap.Select(
+                id=field_id, value=display_value, options=field_value_options)
         if field_type == FieldType.TEXT:
             return bootstrap.Input(
                 id=field_id, type='text', value=DictFormAIO.__value_as_str(display_value), readonly=is_readonly,
