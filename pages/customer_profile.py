@@ -11,7 +11,7 @@ from dash.dash_table import DataTable
 from dash.exceptions import PreventUpdate
 
 from components.dict_form import DataStore as FormData, DictFormAIO, FieldType, Ids as FormIds
-from components.page_callback import Action, CallbackData, page_callback
+from components.page_callback import change_page_callback, MultiPageCallbackData, Pages, user_message_callback
 from controls.data_provider import DataProvider
 from controls.types import Customer, UserMessage
 from pages.customer_list import Ids
@@ -50,7 +50,7 @@ class Ids:
     @classmethod
     def element(cls, component_type: Any, index: Any = '') -> Id:
         return Ids.Id(
-            page='customer_profile',
+            new_page='customer_profile',
             component=component_type,
             index=index
         )
@@ -157,33 +157,33 @@ class Controller:
 
     @staticmethod
     def get_profile_by_dog_id(dog_id: int) -> CustomerProfile:
-        data_provider = DataProvider()
-        customer = data_provider.get_customer_by_dog_id(dog_id=dog_id)
+        with DataProvider() as data_provider:
+            customer = data_provider.get_customer_by_dog_id(dog_id=dog_id)
 
-        dogs_profiles = {}
-        for dog in customer.dogs:
-            other_dog_id = dog['dog_id']
-            subscriptions = data_provider.get_subscriptions_by_dog_id(dog_id=other_dog_id)
-            single_classes = data_provider.get_single_classes_by_dog_id(dog_id=other_dog_id)
-            dogs_profiles[other_dog_id] = DogProfile(
-                subscriptions=subscriptions,
-                single_classes=single_classes,
+            dogs_profiles = {}
+            for dog in customer.dogs:
+                other_dog_id = dog['dog_id']
+                subscriptions = data_provider.get_subscriptions_by_dog_id(dog_id=other_dog_id)
+                single_classes = data_provider.get_single_classes_by_dog_id(dog_id=other_dog_id)
+                dogs_profiles[other_dog_id] = DogProfile(
+                    subscriptions=subscriptions,
+                    single_classes=single_classes,
+                )
+
+            return CustomerProfile(
+                customer=customer,
+                dog_profile_by_id=dogs_profiles
             )
 
-        return CustomerProfile(
-            customer=customer,
-            dog_profile_by_id=dogs_profiles
-        )
-
     @staticmethod
-    @page_callback(
-        action=Action.OPEN_SUBSCRIPTION,
+    @change_page_callback(
+        new_page=Pages.subscription_profile_path_param,
         inputs=dict(
             active_cell_list=Input(Ids.dog_subscriptions_table(dog_id=ALL), 'active_cell'),
             table_data_list=State(Ids.dog_subscriptions_table(dog_id=ALL), 'data'),
         )
     )
-    def on_cell_clicked(active_cell_list: list[Optional[dict]], table_data_list: list[dict]) -> CallbackData:
+    def on_cell_clicked(active_cell_list: list[Optional[dict]], table_data_list: list[dict]) -> MultiPageCallbackData:
         if not ctx.triggered:
             raise PreventUpdate
         if len(ctx.triggered) > 1:
@@ -205,7 +205,8 @@ class Controller:
             # FIXME doesn't work with filters
             row = active_cell['value']['row']
             subscription_id = subscriptions_df.at[row, 'subscription_id']
-            return CallbackData(entity_id=subscription_id)
+            return MultiPageCallbackData(page_param_value=subscription_id)
+        # TODO user message and error log
         raise PreventUpdate('Could not find table for the dog clicked on')
 
     @staticmethod
@@ -254,8 +255,7 @@ class Controller:
         return make_layout(int(dog_id))
 
     @staticmethod
-    @page_callback(
-        action=Action.SHOW_USER_MESSAGE,
+    @user_message_callback(
         inputs=dict(
             save_button_clicks=Input(id_save_button, 'n_clicks'),
             customer_data_json=State(FormIds.form_data_store(id_customer_data_form), 'data'),
@@ -264,54 +264,52 @@ class Controller:
         )
     )
     def save_customer(save_button_clicks: int, customer_data_json: str, dogs_json: str,
-                      persons_json: str) -> CallbackData:
+                      persons_json: str) -> UserMessage:
         if not save_button_clicks:
             raise PreventUpdate
 
         logger.info('Saving customer...')
         logger.debug(f'customer_data={customer_data_json} dogs={dogs_json} persons={persons_json}')
 
-        data_provider = DataProvider()
-        try:
-            customer_data = FormData.from_json(customer_data_json)
-            logger.info(f'Validating customer data: {customer_data.data}')
-            customer_data.validate()
-            if customer_data.is_insertion:
-                customer_id = data_provider.insert_customer(customer_data.data)
-            else:
-                customer_id = customer_data.data['customer_id']
-                data_provider.update_customer(customer_data.data)
-            logger.info(f'Saved customer {customer_id}')
-
-            for dog_json in dogs_json:
-                dog = FormData.from_json(dog_json)
-                logger.info(f'Validating dog: {dog.data}')
-                dog.validate()
-                if dog.is_insertion:
-                    dog_id = data_provider.insert_dog(dog.data, customer_id=customer_id)
+        with DataProvider() as data_provider:
+            try:
+                customer_data = FormData.from_json(customer_data_json)
+                logger.info(f'Validating customer data: {customer_data.data}')
+                customer_data.validate()
+                if customer_data.is_insertion:
+                    customer_id = data_provider.insert_customer(customer_data.data)
                 else:
-                    dog_id = dog.data['dog_id']
-                    data_provider.update_dog(dog.data)
-                logger.info(f'Saved dog {dog_id} from customer {customer_id}')
+                    customer_id = customer_data.data['customer_id']
+                    data_provider.update_customer(customer_data.data)
+                logger.info(f'Saved customer {customer_id}')
 
-            for person_json in persons_json:
-                person = FormData.from_json(person_json)
-                logger.info(f'Validating person: {person.data}')
-                person.validate()
-                if person.is_insertion:
-                    person_id = data_provider.insert_person(person.data, customer_id=customer_id)
-                else:
-                    person_id = person.data['person_id']
-                    data_provider.update_person(person.data)
-                logger.info(f'Saved person {person_id} from customer {customer_id}')
+                for dog_json in dogs_json:
+                    dog = FormData.from_json(dog_json)
+                    logger.info(f'Validating dog: {dog.data}')
+                    dog.validate()
+                    if dog.is_insertion:
+                        dog_id = data_provider.insert_dog(dog.data, customer_id=customer_id)
+                    else:
+                        dog_id = dog.data['dog_id']
+                        data_provider.update_dog(dog.data)
+                    logger.info(f'Saved dog {dog_id} from customer {customer_id}')
 
-            data_provider.commit()
-            return CallbackData(
-                user_message=UserMessage(message='Customer saved successfully', header='Success', type='success'))
-        except RuntimeError as e:
-            data_provider.rollback()
-            return CallbackData(
-                user_message=UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger'))
+                for person_json in persons_json:
+                    person = FormData.from_json(person_json)
+                    logger.info(f'Validating person: {person.data}')
+                    person.validate()
+                    if person.is_insertion:
+                        person_id = data_provider.insert_person(person.data, customer_id=customer_id)
+                    else:
+                        person_id = person.data['person_id']
+                        data_provider.update_person(person.data)
+                    logger.info(f'Saved person {person_id} from customer {customer_id}')
+
+                data_provider.commit()
+                return UserMessage(message='Customer saved successfully', header='Success', type='success')
+            except RuntimeError as e:
+                data_provider.rollback()
+                return UserMessage(message=f'Error saving customer: {e}', header='Error', type='danger')
 
     @classmethod
     def __add_new_dog_tab(cls, dogs_tabs: list[bootstrap.Tab]) -> tuple[list[bootstrap.Tab], str]:
@@ -463,12 +461,15 @@ class Controller:
 
 
 def make_layout(dog_id: int) -> list:
+    logger.debug(f'Making layout for dog_id={dog_id}')
     customer_profile, is_insertion = (Controller.make_new_profile(), True) \
         if dog_id is None \
         else (Controller.get_profile_by_dog_id(dog_id=dog_id), False)
 
+    logger.debug(f'Loaded customer profile: {customer_profile}')
     customer = customer_profile.customer
 
+    logger.debug(f'Making layout...')
     add_dog_tab = bootstrap.Tab(
         'Au Au! New dog in the oven...',
         id=Ids.element('Tab', Controller.tab_id_add_dog_tab),
@@ -530,6 +531,7 @@ def make_layout(dog_id: int) -> list:
         )
     )
     children = [row_dogs_tabs] + rows_persons + [row_customer_data, row_buttons]
+    logger.debug(f'Done making layout.')
     return children
 
 

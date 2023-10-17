@@ -1,10 +1,18 @@
 import json
+import re
 from typing import Any, TypeVar
 
 import pandas as pd
 from bidict import bidict
 
 _T = TypeVar('_T')
+
+
+def url_path_to_param_dict(url_path: str) -> dict[str, Any]:
+    pattern = r"/([^/]+)/([^/]+)"
+    params = re.findall(pattern, url_path)
+    param_dict = {param: value for param, value in params}
+    return param_dict
 
 
 def get_single_row_as_dict(df: pd.DataFrame) -> dict:

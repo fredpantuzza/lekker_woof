@@ -3,11 +3,11 @@ from typing import Any, Optional
 
 import dash_bootstrap_components as bootstrap
 import pandas as pd
-from dash import callback, Input, Output, html, State
+from dash import callback, html, Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from components.dict_form import DictFormAIO, DataStore as FormData, FieldType, Ids as FormIds
-from components.page_callback import page_callback, Action, CallbackData
+from components.dict_form import DataStore as FormData, DictFormAIO, FieldType, Ids as FormIds
+from components.page_callback import user_message_callback
 from controls.data_provider import DataProvider
 from controls.types import UserMessage
 
@@ -42,8 +42,8 @@ class Controller:
 
     @staticmethod
     def get_training_by_id(training_id: int) -> pd.DataFrame:
-        data_provider = DataProvider()
-        return data_provider.get_training_by_id(training_id=training_id)
+        with DataProvider() as data_provider:
+            return data_provider.get_training_by_id(training_id=training_id)
 
     @staticmethod
     @callback(
@@ -63,42 +63,40 @@ class Controller:
         return make_layout(training_id)
 
     @staticmethod
-    @page_callback(
-        action=Action.SHOW_USER_MESSAGE,
+    @user_message_callback(
         inputs=dict(
             save_button_clicks=Input(id_save_button, 'n_clicks'),
             training_data_json=State(FormIds.form_data_store(id_training_data_form), 'data'),
         )
     )
-    def save_training(save_button_clicks: int, training_data_json: str) -> CallbackData:
+    def save_training(save_button_clicks: int, training_data_json: str) -> UserMessage:
         if not save_button_clicks:
             raise PreventUpdate
 
         logger.info('Saving training...')
         logger.debug(f'training_data={training_data_json}')
 
-        data_provider = DataProvider()
-        try:
-            training_data = FormData.from_json(training_data_json)
-            logger.info(f'Validating training data: {training_data.data}')
-            training_data.validate()
-            if training_data.is_insertion:
-                training_id = data_provider.insert_training(training_data.data)
-            else:
-                training_id = training_data.data['training_id']
-                data_provider.update_training(training_data.data)
-            logger.info(f'Saved training {training_id}')
+        with DataProvider() as data_provider:
+            try:
+                training_data = FormData.from_json(training_data_json)
+                logger.info(f'Validating training data: {training_data.data}')
+                training_data.validate()
+                if training_data.is_insertion:
+                    training_id = data_provider.insert_training(training_data.data)
+                else:
+                    training_id = training_data.data['training_id']
+                    data_provider.update_training(training_data.data)
+                logger.info(f'Saved training {training_id}')
 
-            data_provider.commit()
-            return CallbackData(
-                user_message=UserMessage(message='Training saved successfully', header='Success', type='success'))
-        except RuntimeError as e:
-            data_provider.rollback()
-            return CallbackData(
-                user_message=UserMessage(message=f'Error saving training: {e}', header='Error', type='danger'))
+                data_provider.commit()
+                return UserMessage(message='Training saved successfully', header='Success', type='success')
+            except RuntimeError as e:
+                data_provider.rollback()
+                return UserMessage(message=f'Error saving training: {e}', header='Error', type='danger')
 
 
 def make_layout(training_id: Optional[int]) -> list:
+    logger.debug(f'Making layout for training_id={training_id}')
     training_df, is_insertion = (pd.DataFrame(), True) \
         if training_id is None \
         else (Controller.get_training_by_id(training_id=training_id), False)
@@ -107,7 +105,9 @@ def make_layout(training_id: Optional[int]) -> list:
     if len(trainings) != 1:
         raise ValueError(f'Expected 1 and only 1 training, but found {len(trainings)} for id {training_id}')
     training = trainings[0]
+    logger.debug(f'Loaded training: {training}')
 
+    logger.debug(f'Making layout...')
     row_training_data = bootstrap.Row(
         bootstrap.Col(
             html.Div(
@@ -136,6 +136,7 @@ def make_layout(training_id: Optional[int]) -> list:
         )
     )
     children = [row_training_data, row_buttons]
+    logger.debug(f'Done making layout.')
     return children
 
 

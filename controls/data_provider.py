@@ -11,11 +11,18 @@ logger.setLevel(logging.DEBUG)
 
 
 class DataProvider:
-    def __init__(self):
+    # TODO configurable file location
+
+    def __enter__(self):
         logger.info('Connecting to database...')
-        # TODO configurable file location
         self.__connection = sqlite3.connect('sql/lekker_woof.db')
         logger.info('Connected')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logger.info('Closing connection...')
+        self.__connection.close()
+        return 0
 
     def commit(self) -> None:
         logger.info('Committing...')
